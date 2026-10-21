@@ -265,6 +265,27 @@ Deleting uses `POST /xoa-truyen/{id}` with the session CSRF token (form field `_
 - The route and its error path were verified against the live site with a non-existent story id. Which stories TTC actually allows to be deleted is decided by TTC; its answer is shown unchanged.
 - `DeleteBookModal` asks for confirmation first: the delete is irreversible.
 
+## Abandon Check ("Check vô hố")
+
+TTC treats an ongoing ("Đang ra") story with no new chapter for 12 days as abandoned; another translator may then claim it. Re-uploading any existing chapter resets the date, so the toolbar button "Check vô hố" opens `AbandonCheckModal`, which re-uploads chapter 1 of each story the user picks.
+
+```
+AbandonCheckModal → useAbandonCheck
+  ttc_fetch_books(status=ongoing, every page)  → rows sorted by days since last_chap_updated
+  per story, one at a time:
+    pending approval / 0 chapters on TTC       → invalid
+    no folder picked *for this book*           → invalid (the global folderPath is ignored on purpose)
+    ttc_read_folder_files → parseLocalChapters(book settings) → chapter with index 1, else invalid
+    ttc_fetch_chapters(page 1, limit 1)        → title differs from the folder: warning, not preselected
+  Reup → addJob(one chapter, price rules of the book) per story → UploadQueueContext runs them in turn
+```
+
+- The folder is split in a Web Worker (`utils/localChapters.worker.ts` via `utils/chapterParser.ts`; only chapter 1 comes back): splitting a 1000-chapter novel takes about a second, which froze the modal when it ran on the main thread story after story.
+- `utils/localChapters.ts` holds the folder → chapters parsing and the VIP price rules, shared with `useTtcChapters`, so the re-uploaded chapter 1 is exactly what "Đồng bộ" would upload.
+- `utils/abandon.ts`: `ABANDON_DAYS` (12), day count and risk level. Only stories at least N days without a chapter are preselected (default `DEFAULT_REUP_FROM_DAYS` = 7, adjustable in the modal, kept in localStorage `nk_ttc_reup_from_days`). The rule lives on TTC; change the constant if TTC changes it.
+- Several reup jobs start back to back, and TTC has answered `/dang-chuong/{id}` with HTTP 500 in that situation. `ttc_fetch_upload_tokens` retries connection errors, 5xx and 429 (3 attempts, 3s then 6s) and logs the status and body of every failure. A failed reup can be selected and queued again from the modal.
+- `addJob` of the upload queue returns the job id, so the modal shows the status of the jobs it queued.
+
 ## Known Limitations
 
 1. **Session expiry**: No auto-refresh — user must re-login when session expires

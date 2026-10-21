@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Hourglass, Plus } from 'lucide-react';
 import { Pagination } from '@/shared/components';
 import { STATUS_OPTIONS } from '../constants';
 import type { BookStatus } from '../constants';
@@ -17,6 +17,7 @@ interface BookListToolbarProps {
   onLimitChange: (limit: number) => void;
   onRefresh: () => void;
   onCreate: () => void;
+  onCheckAbandon: () => void;
 }
 
 /**
@@ -36,6 +37,7 @@ export function BookListToolbar({
   onLimitChange,
   onRefresh,
   onCreate,
+  onCheckAbandon,
 }: BookListToolbarProps) {
   return (
     <div className="flex-shrink-0">
@@ -97,6 +99,13 @@ export function BookListToolbar({
               className="text-xs text-text-secondary hover:text-gold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-bg-hover"
             >
               <span>↻</span> <span className="hidden sm:inline">{loadingBooks ? 'Đang tải...' : 'Làm mới'}</span>
+            </button>
+            <button
+              onClick={onCheckAbandon}
+              title="Xem truyện đang ra sắp bị vô hố và reup chương 1 để làm mới ngày cập nhật"
+              className="text-xs font-medium text-gold border border-gold/40 hover:bg-gold/10 transition-colors cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap"
+            >
+              <Hourglass size={14} /> Check vô hố
             </button>
             <button
               onClick={onCreate}

@@ -4,7 +4,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useSettings } from '@/features/settings/hooks/useSettings';
 import type { LocalSortMode, UnlockTimer } from '@/features/settings/types';
 import { useUploadQueueContext } from '@/shared/context/UploadQueueContext';
-import { splitMultipleChapters, splitFilesByFirstLine, type ChapterFile } from '@/features/chapter-splitter/utils/splitter';
+import type { ChapterFile } from '@/features/chapter-splitter/utils/splitter';
+import { parseLocalChapters, applyChapterPrices } from '../utils/localChapters';
 import { DEFAULT_CHAPTERS_LIMIT } from '../constants';
 import type {
   TtcStory,
@@ -205,29 +206,6 @@ export function useTtcChapters(selectedBook: TtcStory | null) {
   const [processingChapters, setProcessingChapters] = useState(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  /**
-   * Natural sort comparator for chapter titles.
-   * Extracts leading number from "Chương X" pattern for numeric comparison,
-   * falls back to locale string comparison for non-numeric titles.
-   */
-  const naturalTitleSort = useCallback((a: ParsedChapter, b: ParsedChapter) => {
-    const numRegex = /chương\s+(\d+)/i;
-    const matchA = a.title.match(numRegex);
-    const matchB = b.title.match(numRegex);
-    if (matchA && matchB) {
-      const numA = parseInt(matchA[1], 10);
-      const numB = parseInt(matchB[1], 10);
-      if (numA !== numB) return numA - numB;
-      // Same chapter number — compare full title numerically so part suffixes
-      // like "(2/12)" sort before "(10/12)" instead of lexicographically.
-      return a.title.localeCompare(b.title, 'vi', { numeric: true });
-    }
-    // Chapters with numbers come first
-    if (matchA) return -1;
-    if (matchB) return 1;
-    return a.title.localeCompare(b.title, 'vi', { numeric: true });
-  }, []);
-  
   useEffect(() => {
     if (folderFiles.length === 0) {
       setChapters([]);
@@ -239,41 +217,10 @@ export function useTtcChapters(selectedBook: TtcStory | null) {
     clearTimeout(debounceTimerRef.current);
     
     debounceTimerRef.current = setTimeout(() => {
-      const actualMaxWords = enableSplit ? maxWords : Number.MAX_SAFE_INTEGER;
-      const actualMinWords = enableSplit ? minWords : 0;
+      const parsedChapters = parseLocalChapters(folderFiles, {
+        enableSplit, maxWords, minWords, roundUp, splitFromChapter, localSortMode, fileFirstLineTitle, skipChapters,
+      });
 
-      let parsedChapters: ParsedChapter[];
-      if (localSortMode === 'file' && fileFirstLineTitle) {
-        // Each file is one chapter; its first non-empty line is the title.
-        const result = splitFilesByFirstLine(folderFiles, actualMaxWords, roundUp, actualMinWords, splitFromChapter);
-        parsedChapters = result.parts.map((part, index) => ({
-          index: index + 1 + (skipChapters || 0),
-          title: part.title,
-          content: part.content,
-          word_count: part.wordCount,
-          file_name: part.fileName,
-        }));
-      } else {
-        // Concatenate all files and split on "Chương X" headings.
-        // splitMultipleChapters handles duplicate title removal internally.
-        const rawFolderText = folderFiles.map(f => f.text).join('\n\n');
-        const result = splitMultipleChapters(rawFolderText, actualMaxWords, roundUp, actualMinWords, splitFromChapter);
-        parsedChapters = result.parts.map((part, index) => ({
-          index: index + 1 + (skipChapters || 0),
-          title: part.title || `Chương ${index + 1 + (skipChapters || 0)}`,
-          content: part.content || part.text,
-          word_count: part.wordCount,
-          file_name: 'local_folder',
-        }));
-      }
-
-      // Sort by chapter title (natural sort) if mode is 'name'
-      if (localSortMode === 'name') {
-        parsedChapters.sort(naturalTitleSort);
-        // Re-index after sorting
-        parsedChapters = parsedChapters.map((ch, i) => ({ ...ch, index: i + 1 + (skipChapters || 0) }));
-      }
-      
       setChapters(parsedChapters);
       setProcessingChapters(false);
       if (parsedChapters.length > 0) {
@@ -283,7 +230,7 @@ export function useTtcChapters(selectedBook: TtcStory | null) {
     }, 400);
 
     return () => clearTimeout(debounceTimerRef.current);
-  }, [folderFiles, reloadCounter, maxWords, minWords, roundUp, enableSplit, splitFromChapter, localSortMode, fileFirstLineTitle, naturalTitleSort, skipChapters]);
+  }, [folderFiles, reloadCounter, maxWords, minWords, roundUp, enableSplit, splitFromChapter, localSortMode, fileFirstLineTitle, skipChapters]);
 
   // Start chapter upload
   const handleUpload = useCallback(async () => {
@@ -306,18 +253,7 @@ export function useTtcChapters(selectedBook: TtcStory | null) {
       return;
     }
 
-    // The price applies to every uploaded chapter that qualifies, whether or not it is already
-    // on the web: re-uploading an existing VIP chapter must keep it VIP.
-    let finalChaptersToUpload = chaptersToUpload;
-    if (chapterPrice > 0) {
-      finalChaptersToUpload = chaptersToUpload.map(c => {
-        // TTC only allows VIP from a certain chapter number on (c.index already includes skipChapters)
-        if (vipFromChapter > 0 && c.index < vipFromChapter) return { ...c, price: 0 };
-        // TTC rejects VIP on short chapters, so upload those free
-        if (vipMinWords > 0 && c.word_count < vipMinWords) return { ...c, price: 0 };
-        return { ...c, price: chapterPrice };
-      });
-    }
+    const finalChaptersToUpload = applyChapterPrices(chaptersToUpload, { chapterPrice, vipFromChapter, vipMinWords });
 
     const options: UploadOptions = {
       book_id: selectedBook.id,

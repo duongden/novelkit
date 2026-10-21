@@ -111,12 +111,52 @@ pub async fn ttc_read_folder_files(folder_path: String) -> Result<Vec<FolderFile
 
 // ─── CSRF & Upload Nonce Helper ────────────────────────────
 
+/// Attempts at loading `/dang-chuong/{id}` before giving up on a transient failure.
+const TOKEN_ATTEMPTS: u64 = 3;
+
+/// Load the upload form for its tokens. TTC sometimes answers this page with a 5xx
+/// (several jobs started back to back, e.g. "Check vô hố"), so transient failures
+/// (connection error, 5xx, 429) are retried with a growing pause.
 async fn ttc_fetch_upload_tokens(
     client: &reqwest::Client,
     base_url: &str,
     session: &str,
     book_id: i64,
 ) -> Result<(String, String), String> {
+    let mut attempt = 1;
+    loop {
+        match ttc_fetch_upload_tokens_once(client, base_url, session, book_id).await {
+            Ok(tokens) => return Ok(tokens),
+            Err((msg, transient)) if transient && attempt < TOKEN_ATTEMPTS => {
+                log::warn!(
+                    "Token fetch for book {} failed (attempt {}/{}): {}",
+                    book_id,
+                    attempt,
+                    TOKEN_ATTEMPTS,
+                    msg
+                );
+                sleep(std::time::Duration::from_secs(3 * attempt)).await;
+                attempt += 1;
+            }
+            Err((msg, transient)) => {
+                log::warn!("Token fetch for book {} failed: {}", book_id, msg);
+                return Err(if transient && attempt > 1 {
+                    format!("{} (đã thử {} lần)", msg, attempt)
+                } else {
+                    msg
+                });
+            }
+        }
+    }
+}
+
+/// One attempt; the error carries whether it is worth retrying.
+async fn ttc_fetch_upload_tokens_once(
+    client: &reqwest::Client,
+    base_url: &str,
+    session: &str,
+    book_id: i64,
+) -> Result<(String, String), (String, bool)> {
     let url = format!("{}/dang-chuong/{}", base_url, book_id);
     let resp = client
         .get(&url)
@@ -124,28 +164,51 @@ async fn ttc_fetch_upload_tokens(
         .header("User-Agent", USER_AGENT)
         .send()
         .await
-        .map_err(|e| format!("Lỗi kết nối khi lấy Token: {}", e))?;
+        .map_err(|e| (format!("Lỗi kết nối khi lấy Token: {}", e), true))?;
 
-    if !resp.status().is_success() {
-        return Err(format!("Lỗi HTTP {} khi lấy Token", resp.status()));
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        log::warn!(
+            "GET /dang-chuong/{} -> HTTP {}: {}",
+            book_id,
+            status,
+            truncate_chars(body.trim(), 500)
+        );
+        let transient =
+            status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+        return Err((
+            format!("Lỗi {} khi lấy Token", describe_http_failure(status, &body)),
+            transient,
+        ));
     }
 
     let html = resp
         .text()
         .await
-        .map_err(|e| format!("Lỗi đọc HTML: {}", e))?;
+        .map_err(|e| (format!("Lỗi đọc HTML: {}", e), true))?;
 
     let csrf_token = Regex::new(r#"name="?_csrf"?\s+value="([^"]+)""#)
         .unwrap()
         .captures(&html)
         .map(|caps| caps[1].to_string())
-        .ok_or_else(|| "Không tìm thấy _csrf token trên trang đăng chương".to_string())?;
+        .ok_or_else(|| {
+            (
+                "Không tìm thấy _csrf token trên trang đăng chương".to_string(),
+                false,
+            )
+        })?;
 
     let upload_nonce = Regex::new(r#"name="?_upload_nonce"?\s+value="([^"]+)""#)
         .unwrap()
         .captures(&html)
         .map(|caps| caps[1].to_string())
-        .ok_or_else(|| "Không tìm thấy _upload_nonce trên trang đăng chương".to_string())?;
+        .ok_or_else(|| {
+            (
+                "Không tìm thấy _upload_nonce trên trang đăng chương".to_string(),
+                false,
+            )
+        })?;
 
     Ok((csrf_token, upload_nonce))
 }

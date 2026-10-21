@@ -12,3 +12,4 @@ export { Segmented } from './Segmented';
 export { CoverCropperModal } from './CoverCropperModal';
 export { default as ProxiedImage } from './ProxiedImage';
 export { ResyncComparisonTable } from './ResyncComparisonTable';
+export { AbandonCheckModal } from './AbandonCheckModal';

@@ -16,6 +16,7 @@ import {
   EditBookModal,
   CreateBookModal,
   DeleteBookModal,
+  AbandonCheckModal,
 } from './components';
 import type { TtcStory } from './types';
 
@@ -50,6 +51,7 @@ function TtcUploaderContent() {
   /** Outcome of the last create/delete, shown above the list until dismissed. */
   const [listNotice, setListNotice] = useState<string | null>(null);
   const [showDownloadAllModal, setShowDownloadAllModal] = useState(false);
+  const [showAbandonCheck, setShowAbandonCheck] = useState(false);
   const [activeTab, setActiveTab] = useState<'remote' | 'local'>('remote');
 
   // ─── Book selection handlers ────────────────────────────
@@ -263,6 +265,7 @@ function TtcUploaderContent() {
             }}
             onRefresh={books.refreshBooks}
             onCreate={() => setShowCreateModal(true)}
+            onCheckAbandon={() => setShowAbandonCheck(true)}
           />
 
           {listNotice && (
@@ -329,6 +332,20 @@ function TtcUploaderContent() {
             setShowCreateModal(false);
             setListNotice(`Đã đăng truyện “${result.title}”. Bấm Đồng bộ ở truyện đó để upload chương.`);
             books.refreshBooks();
+          }}
+        />
+      )}
+
+      {/* Abandon ("vô hố") check: reup chapter 1 of ongoing stories */}
+      {showAbandonCheck && (
+        <AbandonCheckModal
+          onClose={() => {
+            setShowAbandonCheck(false);
+            books.refreshBooks();
+          }}
+          onOpenBook={(book) => {
+            setShowAbandonCheck(false);
+            handleSelectBook(book);
           }}
         />
       )}

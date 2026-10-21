@@ -9,7 +9,8 @@ import type { UploadJob } from './uploadQueueDefs';
 
 interface UploadQueueContextValue {
   jobs: UploadJob[];
-  addJob: (options: UploadJob['options'], bookTitle: string) => void;
+  /** Returns the id of the queued job. */
+  addJob: (options: UploadJob['options'], bookTitle: string) => string;
   removeJob: (id: string) => void;
   cancelJob: (id: string) => void;
   clearDone: () => void;
@@ -60,6 +61,7 @@ export const UploadQueueProvider = ({ children }: { children: ReactNode }) => {
       timestamp: Date.now(),
     };
     setJobs((prev) => [...prev, newJob]);
+    return newJob.id;
   }, []);
 
   const removeJob = useCallback((id: string) => {
