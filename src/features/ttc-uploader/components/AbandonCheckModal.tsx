@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, Hourglass, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { useUploadQueueContext } from '@/shared/context/UploadQueueContext';
-import { useLocalStorage } from '@/shared/hooks/useLocalStorage';
+import { usePersistentState } from '@/shared/hooks/usePersistentState';
 import type { UploadJob } from '@/shared/context/uploadQueueDefs';
 import { useAbandonCheck, type AbandonRow } from '../hooks/useAbandonCheck';
 import { ABANDON_DAYS, DEFAULT_REUP_FROM_DAYS, abandonRisk, type AbandonRisk } from '../utils/abandon';
 import type { TtcStory } from '../types';
 
 interface AbandonCheckModalProps {
+  /** Username of the active TTC account; the queued re-uploads are pinned to it. */
+  account?: string | null;
   onClose: () => void;
   /** Open the sync page of a story (e.g. to pick its folder). */
   onOpenBook: (book: TtcStory) => void;
@@ -38,12 +40,12 @@ const JOB_BADGE: Record<UploadJob['status'], { label: string; className: string 
  * "Check vô hố": every ongoing story with the days since its last chapter. Stories whose
  * folder yields chapter 1 can be re-uploaded in one go, which resets the date on TTC.
  */
-export function AbandonCheckModal({ onClose, onOpenBook }: AbandonCheckModalProps) {
-  const { rows, loadingBooks, checking, checkedCount, error, jobIds, runCheck, enqueueReup } = useAbandonCheck();
+export function AbandonCheckModal({ account, onClose, onOpenBook }: AbandonCheckModalProps) {
+  const { rows, loadingBooks, checking, checkedCount, error, jobIds, runCheck, enqueueReup } = useAbandonCheck(account);
   const { jobs } = useUploadQueueContext();
   /** Explicit picks of the user; rows without one follow the default (ready, no warning, due for a reup). */
   const [picked, setPicked] = useState<Record<number, boolean>>({});
-  const [reupFromDays, setReupFromDays] = useLocalStorage('nk_ttc_reup_from_days', DEFAULT_REUP_FROM_DAYS);
+  const [reupFromDays, setReupFromDays] = usePersistentState('nk_ttc_reup_from_days', DEFAULT_REUP_FROM_DAYS);
   const isDue = (row: AbandonRow) => row.days === null || row.days >= reupFromDays;
   const [notice, setNotice] = useState<string | null>(null);
 

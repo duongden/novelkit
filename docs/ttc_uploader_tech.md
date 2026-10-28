@@ -294,7 +294,7 @@ AbandonCheckModal → useAbandonCheck
     no folder picked *for this book*           → invalid (the global folderPath is ignored on purpose)
     ttc_read_folder_files → parseLocalChapters(book settings) → chapter with index 1, else invalid
     ttc_fetch_chapters(page 1, limit 1)        → title differs from the folder: warning, not preselected
-  Reup → addJob(one chapter, price rules of the book) per story → UploadQueueContext runs them in turn
+  Reup → addJob(one chapter, price rules of the book, pinned to the active account) per story → UploadQueueContext runs them in turn
 ```
 
 - The folder is split in a Web Worker (`utils/localChapters.worker.ts` via `utils/chapterParser.ts`; only chapter 1 comes back): splitting a 1000-chapter novel takes about a second, which froze the modal when it ran on the main thread story after story.

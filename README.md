@@ -160,6 +160,7 @@ src-tauri/                  # Tauri Rust backend (chỉ dành cho desktop)
 | Ngôn ngữ | TypeScript | 6.x (strict mode) |
 | Styling | TailwindCSS | 4.x |
 | Routing | react-router-dom | 7.x |
+| Worker IPC | Comlink | 4.x |
 | Desktop | Tauri | 2.x |
 | Backend Desktop | Rust | 1.77+ |
 | Testing | Vitest + @testing-library/react | latest |

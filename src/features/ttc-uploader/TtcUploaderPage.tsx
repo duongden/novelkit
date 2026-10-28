@@ -369,6 +369,7 @@ function TtcWorkspace({ auth, account }: { auth: TtcAuth; account: TtcAccountInf
       {/* Abandon ("vô hố") check: reup chapter 1 of ongoing stories */}
       {showAbandonCheck && (
         <AbandonCheckModal
+          account={account.username}
           onClose={() => {
             setShowAbandonCheck(false);
             books.refreshBooks();

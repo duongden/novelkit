@@ -54,7 +54,11 @@ async function fetchAllOngoingBooks(): Promise<TtcStory[]> {
  * which ones can be kept alive by re-uploading chapter 1 from their local folder, and
  * queues those re-uploads in the upload queue (one job per story, run one after another).
  */
-export function useAbandonCheck() {
+/**
+ * @param account - username of the active TTC account: the queued re-uploads run on it even
+ *   if the user switches accounts before they start.
+ */
+export function useAbandonCheck(account?: string | null) {
   const { getSettingsForBook, bookSettings } = useSettingsContext();
   const { addJob } = useUploadQueueContext();
 
@@ -183,11 +187,11 @@ export function useAbandonCheck() {
     const queued: Record<number, string> = {};
     for (const row of rows) {
       if (!bookIds.includes(row.book.id) || row.state.kind !== 'ready') continue;
-      queued[row.book.id] = addJob(row.state.options, `${row.book.title} · reup chương 1`);
+      queued[row.book.id] = addJob({ ...row.state.options, account: account || undefined }, `${row.book.title} · reup chương 1`);
     }
     setJobIds(prev => ({ ...prev, ...queued }));
     return Object.keys(queued).length;
-  }, [rows, addJob]);
+  }, [rows, addJob, account]);
 
   const checking = loadingBooks || (rows.length > 0 && checkedCount < rows.length);
 
